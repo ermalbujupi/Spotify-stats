@@ -2,11 +2,17 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Container } from "@/components/layout/Container";
 import { Wordmark } from "@/components/brand/Wordmark";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Card, CardBody } from "@/components/ui/Card";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { ConnectButton } from "@/components/auth/ConnectButton";
 import { ProfileCard } from "@/components/auth/ProfileCard";
+import { SectionCard } from "@/components/dashboard/SectionCard";
+import { ArtistGrid } from "@/components/dashboard/ArtistGrid";
+import { TrackList } from "@/components/dashboard/TrackList";
+import { RecentlyPlayedList } from "@/components/dashboard/RecentlyPlayedList";
+import { DecadeBars } from "@/components/dashboard/DecadeBars";
+import { LibrarySummary } from "@/components/dashboard/LibrarySummary";
+import { StatTile } from "@/components/dashboard/StatTile";
 import { getSession, isExpired } from "@/lib/auth/session";
 import { fetchProfile } from "@/lib/spotify/profile";
 import { SpotifyAuthError } from "@/lib/spotify/errors";
@@ -15,29 +21,23 @@ import {
   type DashboardData,
   type Section,
 } from "@/lib/spotify/dashboard-data";
+import { decadeBreakdown, type DecadeBucket } from "@/lib/insights/eras";
+import { summarizeLibrary, type LibrarySummary as LibrarySummaryData } from "@/lib/insights/library";
 import type { SpotifyUserProfile } from "@/lib/spotify/types";
 
 /**
- * Dashboard (Phase 3).
- * Fetches the full core dataset via the data layer and renders simple,
- * data-driven panels to verify everything flows end to end. Phase 4 replaces
- * these with polished cards, charts, and genre/era visuals.
+ * Dashboard (Phase 4).
+ * Polished, genre-free panel set: top artists grid, top tracks, recently
+ * played timeline, an eras/decades chart, and a library/playlist summary.
  */
 
 const TIME_RANGES = ["4 weeks", "6 months", "12 months"] as const;
 
 export default async function DashboardPage() {
   const session = await getSession();
+  if (!session) return <DisconnectedDashboard />;
+  if (isExpired(session)) redirect("/api/auth/refresh?returnTo=/dashboard");
 
-  if (!session) {
-    return <DisconnectedDashboard />;
-  }
-
-  if (isExpired(session)) {
-    redirect("/api/auth/refresh?returnTo=/dashboard");
-  }
-
-  // Profile is the canonical auth probe; an auth failure sends us to refresh.
   let profile: SpotifyUserProfile;
   let data: DashboardData;
   try {
@@ -52,9 +52,7 @@ export default async function DashboardPage() {
     return (
       <ErrorDashboard
         message={
-          err instanceof Error
-            ? err.message
-            : "Couldn't load your Spotify data."
+          err instanceof Error ? err.message : "Couldn't load your Spotify data."
         }
       />
     );
@@ -101,149 +99,120 @@ function ConnectedDashboard({
   profile: SpotifyUserProfile;
   data: DashboardData;
 }) {
+  // Derive secondary sections from the fetched data (insight layer).
+  const erasSection: Section<DecadeBucket[]> = data.topTracks.ok
+    ? { ok: true, data: decadeBreakdown(data.topTracks.data) }
+    : data.topTracks;
+
+  const librarySection: Section<LibrarySummaryData> =
+    data.playlists.ok && data.savedTracks.ok
+      ? {
+          ok: true,
+          data: summarizeLibrary(
+            data.playlists.data,
+            data.savedTracks.data.total,
+            profile.id,
+          ),
+        }
+      : {
+          ok: false,
+          error: !data.playlists.ok
+            ? data.playlists.error
+            : (data.savedTracks as { error: string }).error,
+        };
+
+  // Headline stats (defensive — any section may have failed).
+  const topArtist = sectionData(data.topArtists)?.[0]?.name ?? "—";
+  const likedSongs = sectionData(data.savedTracks)?.total ?? null;
+  const playlistCount = sectionData(data.playlists)?.length ?? null;
+  const decadesSpanned = sectionData(erasSection)?.length ?? null;
+
   return (
     <div className="flex min-h-dvh flex-col">
       <DashboardHeader right={<ProfileCard profile={profile} />} />
 
       <main className="flex-1 py-8">
-        <Container>
-          <div className="mb-6">
+        <Container className="space-y-6">
+          <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              Welcome
-              {profile.display_name ? `, ${profile.display_name}` : ""}
+              Welcome{profile.display_name ? `, ${profile.display_name}` : ""}
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Data layer is live (showing your last 6 months). Polished visuals
-              arrive in Phase 4.
+              Your listening at a glance · last 6 months
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Panel
+          {/* Headline stats */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile value={topArtist} label="Top artist" />
+            <StatTile
+              value={likedSongs !== null ? likedSongs.toLocaleString() : "—"}
+              label="Liked songs"
+            />
+            <StatTile
+              value={playlistCount !== null ? String(playlistCount) : "—"}
+              label="Playlists"
+            />
+            <StatTile
+              value={decadesSpanned !== null ? String(decadesSpanned) : "—"}
+              label="Decades spanned"
+            />
+          </div>
+
+          {/* Main grid */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <SectionCard
               title="Top artists"
               subtitle="Last 6 months"
               section={data.topArtists}
               isEmpty={(a) => a.length === 0}
-              emptyMessage="No top artists yet — listen a bit more."
-              render={(artists) => (
-                <RankedList
-                  items={artists.slice(0, 5).map((a) => ({
-                    key: a.id,
-                    primary: a.name,
-                    // Genres are omitted: Spotify returns them empty for this
-                    // app (known API regression). See Phase 5 pivot.
-                    secondary: a.genres.length
-                      ? a.genres.slice(0, 2).join(", ")
-                      : undefined,
-                  }))}
-                  footer={`${artists.length} loaded`}
-                />
-              )}
-            />
+              emptyMessage="No top artists yet — keep listening."
+              className="lg:col-span-2"
+            >
+              {(artists) => <ArtistGrid artists={artists} limit={10} />}
+            </SectionCard>
 
-            <Panel
-              title="Top tracks"
-              subtitle="Last 6 months"
-              section={data.topTracks}
-              isEmpty={(t) => t.length === 0}
-              emptyMessage="No top tracks yet."
-              render={(tracks) => (
-                <RankedList
-                  items={tracks.slice(0, 5).map((t) => ({
-                    key: t.id,
-                    primary: t.name,
-                    secondary: t.artists.map((a) => a.name).join(", "),
-                  }))}
-                  footer={`${tracks.length} loaded`}
-                />
-              )}
-            />
-
-            <Panel
+            <SectionCard
               title="Recently played"
               subtitle="Your last 50 plays"
               section={data.recentlyPlayed}
               isEmpty={(p) => p.length === 0}
               emptyMessage="Nothing played recently."
-              render={(plays) => (
-                <RankedList
-                  numbered={false}
-                  items={plays.slice(0, 5).map((p, i) => ({
-                    key: `${p.track.id}-${i}`,
-                    primary: p.track.name,
-                    secondary: `${p.track.artists
-                      .map((a) => a.name)
-                      .join(", ")} · ${relativeTime(p.played_at)}`,
-                  }))}
-                  footer={`${plays.length} plays`}
-                />
-              )}
-            />
+              className="lg:col-span-1"
+            >
+              {(plays) => <RecentlyPlayedList plays={plays} limit={8} />}
+            </SectionCard>
 
-            <Panel
-              title="Playlists"
-              subtitle="Owned & followed"
-              section={data.playlists}
-              isEmpty={(p) => p.length === 0}
-              emptyMessage="No playlists found."
-              render={(playlists) => (
-                <RankedList
-                  numbered={false}
-                  items={playlists.slice(0, 5).map((p) => ({
-                    key: p.id,
-                    primary: p.name,
-                    secondary: `${p.tracks.total} tracks · ${
-                      p.owner.display_name ?? p.owner.id
-                    }`,
-                  }))}
-                  footer={`${playlists.length} loaded`}
-                />
-              )}
-            />
+            <SectionCard
+              title="Top tracks"
+              subtitle="Last 6 months"
+              section={data.topTracks}
+              isEmpty={(t) => t.length === 0}
+              emptyMessage="No top tracks yet."
+              className="lg:col-span-2"
+            >
+              {(tracks) => <TrackList tracks={tracks} limit={10} />}
+            </SectionCard>
 
-            <Panel
-              title="Saved library"
-              subtitle="Liked songs"
-              section={data.savedTracks}
-              isEmpty={(s) => s.total === 0}
-              emptyMessage="No saved tracks."
-              render={(saved) => (
-                <div className="space-y-3">
-                  <Stat value={saved.total.toLocaleString()} label="liked songs" />
-                  <RankedList
-                    numbered={false}
-                    items={saved.sample.slice(0, 3).map((s) => ({
-                      key: s.track.id,
-                      primary: s.track.name,
-                      secondary: s.track.artists.map((a) => a.name).join(", "),
-                    }))}
-                  />
-                </div>
-              )}
-            />
+            <SectionCard
+              title="Eras & decades"
+              subtitle="From album release dates"
+              section={erasSection}
+              isEmpty={(b) => b.length === 0}
+              emptyMessage="Not enough release-date data."
+              className="lg:col-span-1"
+            >
+              {(buckets) => <DecadeBars buckets={buckets} />}
+            </SectionCard>
 
-            <Panel
-              title="Followed artists"
-              subtitle="Artists you follow"
-              section={data.followedArtists}
-              isEmpty={(a) => a.length === 0}
-              emptyMessage="You don't follow any artists yet."
-              render={(artists) => (
-                <div className="space-y-3">
-                  <Stat
-                    value={String(artists.length)}
-                    label="followed artists"
-                  />
-                  <RankedList
-                    numbered={false}
-                    items={artists.slice(0, 3).map((a) => ({
-                      key: a.id,
-                      primary: a.name,
-                    }))}
-                  />
-                </div>
-              )}
-            />
+            <SectionCard
+              title="Library & playlists"
+              subtitle="Your saved music and collections"
+              section={librarySection}
+              className="lg:col-span-3"
+            >
+              {(summary) => <LibrarySummary data={summary} />}
+            </SectionCard>
           </div>
         </Container>
       </main>
@@ -307,103 +276,9 @@ function ErrorDashboard({ message }: { message: string }) {
   );
 }
 
-/* ------------------------------ primitives ------------------------------- */
-
-function Panel<T>({
-  title,
-  subtitle,
-  section,
-  render,
-  isEmpty,
-  emptyMessage,
-}: {
-  title: string;
-  subtitle: string;
-  section: Section<T>;
-  render: (data: T) => React.ReactNode;
-  isEmpty: (data: T) => boolean;
-  emptyMessage: string;
-}) {
-  return (
-    <Card>
-      <CardHeader title={title} subtitle={subtitle} />
-      <CardBody>
-        {section.ok ? (
-          isEmpty(section.data) ? (
-            <EmptyState message={emptyMessage} />
-          ) : (
-            render(section.data)
-          )
-        ) : (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-            {section.error}
-          </div>
-        )}
-      </CardBody>
-    </Card>
-  );
-}
-
-function RankedList({
-  items,
-  footer,
-  numbered = true,
-}: {
-  items: { key: string; primary: string; secondary?: string }[];
-  footer?: string;
-  numbered?: boolean;
-}) {
-  return (
-    <div>
-      <ol className="space-y-2.5">
-        {items.map((item, i) => (
-          <li key={item.key} className="flex items-baseline gap-3">
-            {numbered ? (
-              <span className="w-4 shrink-0 text-right text-xs tabular-nums text-subtle">
-                {i + 1}
-              </span>
-            ) : (
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/60" />
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-sm text-foreground">{item.primary}</p>
-              {item.secondary ? (
-                <p className="truncate text-xs text-subtle">{item.secondary}</p>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ol>
-      {footer ? (
-        <p className="mt-3 border-t border-border pt-2 text-[11px] text-subtle">
-          {footer}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="flex items-baseline gap-2">
-      <span className="text-2xl font-semibold tracking-tight text-foreground">
-        {value}
-      </span>
-      <span className="text-xs text-subtle">{label}</span>
-    </div>
-  );
-}
-
 /* -------------------------------- utils ---------------------------------- */
 
-/** Compact relative time like "3m", "2h", "5d" from an ISO timestamp. */
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+/** Safely unwrap a section's data, or null if it failed. */
+function sectionData<T>(section: Section<T>): T | null {
+  return section.ok ? section.data : null;
 }
