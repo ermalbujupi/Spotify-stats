@@ -1,12 +1,23 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Container } from "@/components/layout/Container";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { ConnectButton } from "@/components/auth/ConnectButton";
+import { ProfileCard } from "@/components/auth/ProfileCard";
+import { getSession, isExpired } from "@/lib/auth/session";
+import {
+  fetchProfile,
+  SpotifyAuthError,
+  type SpotifyUserProfile,
+} from "@/lib/spotify/profile";
 
 /**
- * Dashboard placeholder (Phase 1).
- * Establishes the layout shell — header, time-range control, and a panel grid —
- * with empty/placeholder states. Real data and auth are wired in later phases.
+ * Dashboard (Phase 2).
+ * Server Component: reads the encrypted session, transparently refreshes an
+ * expired token (via the refresh route, since RSCs can't write cookies), and
+ * fetches the user's profile. Renders a connected or "connect" state.
  */
 const TIME_RANGES = ["4 weeks", "6 months", "12 months"] as const;
 
@@ -19,7 +30,51 @@ const PANELS: { title: string; subtitle: string; phase: string }[] = [
   { title: "Inferred vibes", subtitle: "Estimated from metadata", phase: "Phase 5" },
 ];
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const session = await getSession();
+
+  // Not connected → render the shell with a connect prompt.
+  if (!session) {
+    return <DashboardShell state={{ kind: "disconnected" }} />;
+  }
+
+  // Expired access token → bounce through the refresh route, then come back.
+  if (isExpired(session)) {
+    redirect("/api/auth/refresh?returnTo=/dashboard");
+  }
+
+  // Fetch the profile; handle auth + generic errors distinctly.
+  let profile: SpotifyUserProfile;
+  try {
+    profile = await fetchProfile(session.accessToken);
+  } catch (err) {
+    if (err instanceof SpotifyAuthError) {
+      redirect("/api/auth/refresh?returnTo=/dashboard");
+    }
+    return (
+      <DashboardShell
+        state={{
+          kind: "error",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Couldn't load your Spotify profile.",
+        }}
+      />
+    );
+  }
+
+  return <DashboardShell state={{ kind: "connected", profile }} />;
+}
+
+type ShellState =
+  | { kind: "disconnected" }
+  | { kind: "error"; message: string }
+  | { kind: "connected"; profile: SpotifyUserProfile };
+
+function DashboardShell({ state }: { state: ShellState }) {
+  const connected = state.kind === "connected";
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-10 border-b border-border bg-base/70 py-4 backdrop-blur-md">
@@ -29,15 +84,12 @@ export default function DashboardPage() {
           </Link>
 
           <div className="flex items-center gap-3">
-            {/* Time-range control — non-functional placeholder until Phase 7. */}
             <div className="hidden items-center rounded-full border border-border bg-surface/60 p-0.5 sm:flex">
               {TIME_RANGES.map((r, i) => (
                 <span
                   key={r}
                   className={`rounded-full px-3 py-1 text-xs ${
-                    i === 1
-                      ? "bg-surface-2 text-foreground"
-                      : "text-subtle"
+                    i === 1 ? "bg-surface-2 text-foreground" : "text-subtle"
                   }`}
                 >
                   {r}
@@ -45,11 +97,16 @@ export default function DashboardPage() {
               ))}
             </div>
 
-            {/* Profile slot — becomes the user card in Phase 2. */}
-            <div className="flex items-center gap-2 rounded-full border border-border bg-surface/60 px-2 py-1">
-              <span className="h-6 w-6 rounded-full bg-surface-2" />
-              <span className="pr-1 text-xs text-subtle">Not connected</span>
-            </div>
+            {connected ? (
+              <ProfileCard profile={state.profile} />
+            ) : (
+              <Link
+                href="/api/auth/login"
+                className="rounded-full border border-border bg-surface/60 px-4 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-2"
+              >
+                Connect
+              </Link>
+            )}
           </div>
         </Container>
       </header>
@@ -58,13 +115,40 @@ export default function DashboardPage() {
         <Container>
           <div className="mb-6">
             <h1 className="text-2xl font-semibold tracking-tight">
-              Your dashboard
+              {connected
+                ? `Welcome${
+                    state.profile.display_name
+                      ? `, ${state.profile.display_name}`
+                      : ""
+                  }`
+                : "Your dashboard"}
             </h1>
             <p className="mt-1 text-sm text-muted">
-              This is the layout shell. Connect Spotify (Phase 2) to populate it
-              with your real listening data.
+              {connected
+                ? "You're connected. Live data lands in Phase 3–4."
+                : "Connect Spotify to populate this with your real listening data."}
             </p>
           </div>
+
+          {state.kind === "error" ? (
+            <div className="mb-6">
+              <ErrorBanner
+                title="Couldn't load your Spotify data"
+                description={state.message}
+              />
+            </div>
+          ) : null}
+
+          {state.kind === "disconnected" ? (
+            <Card className="mb-6">
+              <CardBody className="flex flex-col items-center gap-3 py-10 text-center">
+                <p className="text-sm text-muted">
+                  Connect your Spotify account to get started.
+                </p>
+                <ConnectButton />
+              </CardBody>
+            </Card>
+          ) : null}
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {PANELS.map((panel) => (

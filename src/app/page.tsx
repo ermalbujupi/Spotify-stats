@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { Container } from "@/components/layout/Container";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { ConnectButton } from "@/components/auth/ConnectButton";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
-/**
- * Landing page (Phase 1).
- * The "Connect Spotify" action is a placeholder link to the dashboard for now;
- * it will be wired to the real OAuth login route in Phase 2.
- */
+/** Friendly copy for OAuth error codes surfaced via the URL. */
+const ERROR_TITLES: Record<string, string> = {
+  access_denied: "Spotify connection was cancelled",
+  invalid_state: "Login could not be verified",
+  missing_verifier: "Your login session expired",
+  token_exchange_failed: "Couldn't complete sign-in",
+  session_expired: "Your session expired",
+  config: "App is not configured yet",
+};
+
 const FEATURES: { title: string; body: string }[] = [
   {
     title: "Top artists & tracks",
@@ -26,7 +33,16 @@ const FEATURES: { title: string; body: string }[] = [
   },
 ];
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; error_description?: string }>;
+}) {
+  const { error, error_description } = await searchParams;
+  const errorTitle = error
+    ? (ERROR_TITLES[error] ?? "Something went wrong")
+    : null;
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="py-6">
@@ -58,15 +74,16 @@ export default function Home() {
             and inferred vibes — in a clean dashboard built just for you.
           </p>
 
+          {errorTitle ? (
+            <div className="mt-6 w-full max-w-md">
+              <ErrorBanner title={errorTitle} description={error_description} />
+            </div>
+          ) : null}
+
           <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
-            <Link
-              href="/dashboard"
-              className="inline-flex items-center justify-center rounded-full bg-accent px-6 py-3 text-sm font-semibold text-black transition-transform hover:scale-[1.02] active:scale-100"
-            >
-              Connect Spotify
-            </Link>
+            <ConnectButton />
             <span className="text-xs text-subtle">
-              Auth arrives in Phase 2 — this previews the dashboard for now.
+              Secure login via Spotify. We only request read access.
             </span>
           </div>
 
