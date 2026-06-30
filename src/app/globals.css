@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens — a minimal, premium "personal music dashboard" palette.
+   Tailwind v4 reads these via the @theme block so they become utilities
+   (e.g. bg-surface, text-muted, etc.).
+--------------------------------------------------------------------------- */
+@theme {
+  --color-base: #0a0a0c;
+  --color-surface: #131316;
+  --color-surface-2: #1b1b20;
+  --color-border: #26262c;
+
+  --color-foreground: #f4f4f5;
+  --color-muted: #a1a1aa;
+  --color-subtle: #71717a;
+
+  --color-accent: #1ed760; /* Spotify green, used sparingly */
+  --color-accent-soft: #1db954;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 1rem;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-base);
+  color: var(--color-foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Subtle ambient gradient behind everything for a premium feel. */
+.app-backdrop {
+  background:
+    radial-gradient(60rem 60rem at 80% -10%, rgba(30, 215, 96, 0.08), transparent 60%),
+    radial-gradient(50rem 50rem at -10% 10%, rgba(99, 102, 241, 0.06), transparent 55%),
+    var(--color-base);
+}
