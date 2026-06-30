@@ -1,9 +1,13 @@
-import Image from "next/image";
 import type { SpotifyUserProfile } from "@/lib/spotify/profile";
 
 /**
  * Compact authenticated-user card shown in the dashboard header.
  * Falls back to an initial when the user has no avatar.
+ *
+ * Avatars are intentionally rendered with a plain <img>, not next/image:
+ * Spotify profile photos can come from arbitrary CDNs (e.g. fbcdn.net when the
+ * account is linked to Facebook) with dynamic hostnames that can't be safely
+ * allowlisted. They're tiny, so optimization isn't worth the host coupling.
  */
 export function ProfileCard({ profile }: { profile: SpotifyUserProfile }) {
   const name = profile.display_name?.trim() || profile.id;
@@ -13,11 +17,13 @@ export function ProfileCard({ profile }: { profile: SpotifyUserProfile }) {
   return (
     <div className="flex items-center gap-2 rounded-full border border-border bg-surface/60 py-1 pl-1 pr-1.5">
       {avatar ? (
-        <Image
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
           src={avatar}
           alt=""
           width={28}
           height={28}
+          referrerPolicy="no-referrer"
           className="h-7 w-7 rounded-full object-cover"
         />
       ) : (
