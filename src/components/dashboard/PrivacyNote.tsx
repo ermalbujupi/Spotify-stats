@@ -17,6 +17,14 @@ export function PrivacyNote() {
         your listening data is fetched fresh on each visit and never shared with a
         third party. Log out anytime to clear the session.
       </p>
+      <p className="mt-2 max-w-3xl text-[11px] leading-relaxed text-subtle">
+        <span className="text-muted">Local history:</span> to build long-term
+        trends (which Spotify&apos;s API can&apos;t provide), the app saves a
+        small daily snapshot of your stats in your browser&apos;s IndexedDB. This
+        never leaves your device, and you can wipe it anytime via{" "}
+        <span className="text-muted">Clear local history</span> in the History
+        &amp; trends panel.
+      </p>
     </footer>
   );
 }

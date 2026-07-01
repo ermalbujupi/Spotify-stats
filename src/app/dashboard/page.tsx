@@ -43,7 +43,10 @@ import { DiscoveryDonut } from "@/components/dashboard/DiscoveryDonut";
 import { VibeRadar } from "@/components/dashboard/VibeRadar";
 import { PersonalityCard } from "@/components/dashboard/PersonalityCard";
 import { PrivacyNote } from "@/components/dashboard/PrivacyNote";
+import { HistoryPanel } from "@/components/dashboard/HistoryPanel";
+import { SnapshotRecorder } from "@/components/dashboard/SnapshotRecorder";
 import { TimeRangeToggle } from "@/components/dashboard/TimeRangeToggle";
+import type { SnapshotPayload } from "@/lib/history/snapshot";
 import { parseTimeRange, timeRangeLongLabel } from "@/lib/timeRange";
 import type { SpotifyUserProfile, TimeRange } from "@/lib/spotify/types";
 
@@ -230,6 +233,17 @@ function ConnectedDashboard({
     topDecadeLabel,
   });
 
+  // Phase 9: compact payload the client records into IndexedDB (once/day/range).
+  const snapshotPayload: SnapshotPayload = {
+    range,
+    topArtists: topArtistsArr.slice(0, 20).map((a) => ({ id: a.id, name: a.name })),
+    topTracks: topTracksArr.slice(0, 20).map((t) => ({ id: t.id, name: t.name })),
+    diversityScore: sectionData(diversitySection)?.score ?? null,
+    topVibe: sectionData(vibesSection)?.vibes[0]?.label ?? null,
+    likedSongs,
+    playlistCount,
+  };
+
   return (
     <div className="flex min-h-dvh flex-col">
       <DashboardHeader
@@ -396,6 +410,9 @@ function ConnectedDashboard({
               {(summary) => <LibrarySummary data={summary} />}
             </SectionCard>
           </div>
+
+          <HistoryPanel range={range} />
+          <SnapshotRecorder payload={snapshotPayload} />
 
           <PrivacyNote />
         </Container>
