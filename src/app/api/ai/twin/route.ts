@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, isExpired } from "@/lib/auth/session";
 import { parseTimeRange } from "@/lib/timeRange";
-import { generateSommelier, isAiConfigured } from "@/lib/ai/sommelier";
+import { isAiConfigured } from "@/lib/ai/sommelier";
+import { generateTwinPersona } from "@/lib/ai/twin";
 import { buildProfileInput } from "@/lib/ai/profile-input";
-import { sommelierCache } from "@/lib/ai/cache";
+import { sommelierCache, twinCache } from "@/lib/ai/cache";
 import {
   aiNotConfiguredResponse,
   mapAiError,
@@ -11,11 +12,11 @@ import {
 } from "@/lib/ai/http";
 
 /**
- * POST /api/ai/sommelier?range=medium_term
+ * POST /api/ai/twin?range=medium_term[&fresh=1]
  *
- * Builds the payload server-side from Spotify (client input is never trusted
- * for the prompt), asks Claude for the enrichment + tasting note, and caches
- * per user + range. POST because it triggers billable work.
+ * Generates (or returns the cached) Music Twin persona for the user + range.
+ * Reuses a cached Sommelier enrichment when present for a richer persona.
+ * `fresh=1` bypasses the cache to roll a new twin.
  */
 export async function POST(request: NextRequest) {
   if (!isAiConfigured()) return aiNotConfiguredResponse();
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
   const range = parseTimeRange(
     request.nextUrl.searchParams.get("range") ?? undefined,
   );
+  const fresh = request.nextUrl.searchParams.get("fresh") === "1";
 
   try {
     const { profileId, input } = await buildProfileInput(
@@ -34,9 +36,11 @@ export async function POST(request: NextRequest) {
     );
     const cacheKey = `${profileId}:${range}`;
 
-    const cached = sommelierCache.get(cacheKey);
-    if (cached) {
-      return NextResponse.json({ result: cached, cached: true });
+    if (!fresh) {
+      const cached = twinCache.get(cacheKey);
+      if (cached) {
+        return NextResponse.json({ persona: cached, cached: true });
+      }
     }
 
     if (input.topArtists.length === 0 && input.topTracks.length === 0) {
@@ -46,9 +50,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await generateSommelier(input);
-    sommelierCache.set(cacheKey, result);
-    return NextResponse.json({ result, cached: false });
+    const enrichment = sommelierCache.get(cacheKey); // may be null — fine
+    const persona = await generateTwinPersona(input, enrichment);
+    twinCache.set(cacheKey, persona);
+    return NextResponse.json({ persona, cached: false });
   } catch (err) {
     return mapAiError(err);
   }

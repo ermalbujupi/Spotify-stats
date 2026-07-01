@@ -43,6 +43,7 @@ import { DiscoveryDonut } from "@/components/dashboard/DiscoveryDonut";
 import { VibeRadar } from "@/components/dashboard/VibeRadar";
 import { PersonalityCard } from "@/components/dashboard/PersonalityCard";
 import { SommelierCard } from "@/components/dashboard/SommelierCard";
+import { TwinCard } from "@/components/dashboard/TwinCard";
 import { PrivacyNote } from "@/components/dashboard/PrivacyNote";
 import { HistoryPanel } from "@/components/dashboard/HistoryPanel";
 import { SnapshotRecorder } from "@/components/dashboard/SnapshotRecorder";
@@ -295,6 +296,9 @@ function ConnectedDashboard({
 
           {/* AI Music Sommelier (Phase 10) — button-triggered, per-range */}
           <SommelierCard range={range} />
+
+          {/* Your Music Twin (Phase 11) — persona + streaming chat */}
+          <TwinCard range={range} />
 
           {/* Main grid */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
