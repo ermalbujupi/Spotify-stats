@@ -42,6 +42,7 @@ import { ScoreMeter } from "@/components/dashboard/ScoreMeter";
 import { DiscoveryDonut } from "@/components/dashboard/DiscoveryDonut";
 import { VibeRadar } from "@/components/dashboard/VibeRadar";
 import { PersonalityCard } from "@/components/dashboard/PersonalityCard";
+import { SommelierCard } from "@/components/dashboard/SommelierCard";
 import { PrivacyNote } from "@/components/dashboard/PrivacyNote";
 import { HistoryPanel } from "@/components/dashboard/HistoryPanel";
 import { SnapshotRecorder } from "@/components/dashboard/SnapshotRecorder";
@@ -291,6 +292,9 @@ function ConnectedDashboard({
           <div className="animate-fade-up">
             <PersonalityCard data={personality} />
           </div>
+
+          {/* AI Music Sommelier (Phase 10) — button-triggered, per-range */}
+          <SommelierCard range={range} />
 
           {/* Main grid */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
