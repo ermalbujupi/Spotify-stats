@@ -42,31 +42,39 @@ import { ScoreMeter } from "@/components/dashboard/ScoreMeter";
 import { DiscoveryDonut } from "@/components/dashboard/DiscoveryDonut";
 import { VibeRadar } from "@/components/dashboard/VibeRadar";
 import { PersonalityCard } from "@/components/dashboard/PersonalityCard";
-import type { SpotifyUserProfile } from "@/lib/spotify/types";
+import { TimeRangeToggle } from "@/components/dashboard/TimeRangeToggle";
+import { parseTimeRange, timeRangeLongLabel } from "@/lib/timeRange";
+import type { SpotifyUserProfile, TimeRange } from "@/lib/spotify/types";
 
 /**
- * Dashboard (Phase 5).
- * Extends Phase 4 with listening-pattern insights derived from recently-played:
- * time-of-day distribution, tracks on repeat, and active-day counts.
+ * Dashboard (Phase 7).
+ * Adds time-range support: `?range=` selects the top-items window, driving a
+ * server-side re-fetch of top artists/tracks and everything derived from them.
  */
 
-const TIME_RANGES = ["4 weeks", "6 months", "12 months"] as const;
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  const { range: rangeParam } = await searchParams;
+  const range = parseTimeRange(rangeParam);
+  const returnTo = encodeURIComponent(`/dashboard?range=${range}`);
 
-export default async function DashboardPage() {
   const session = await getSession();
   if (!session) return <DisconnectedDashboard />;
-  if (isExpired(session)) redirect("/api/auth/refresh?returnTo=/dashboard");
+  if (isExpired(session)) {
+    redirect(`/api/auth/refresh?returnTo=${returnTo}`);
+  }
 
   let profile: SpotifyUserProfile;
   let data: DashboardData;
   try {
     profile = await fetchProfile(session.accessToken);
-    data = await loadDashboardData(session.accessToken, {
-      timeRange: "medium_term",
-    });
+    data = await loadDashboardData(session.accessToken, { timeRange: range });
   } catch (err) {
     if (err instanceof SpotifyAuthError) {
-      redirect("/api/auth/refresh?returnTo=/dashboard");
+      redirect(`/api/auth/refresh?returnTo=${returnTo}`);
     }
     return (
       <ErrorDashboard
@@ -77,12 +85,18 @@ export default async function DashboardPage() {
     );
   }
 
-  return <ConnectedDashboard profile={profile} data={data} />;
+  return <ConnectedDashboard profile={profile} data={data} range={range} />;
 }
 
 /* ----------------------------- header shell ------------------------------ */
 
-function DashboardHeader({ right }: { right: React.ReactNode }) {
+function DashboardHeader({
+  right,
+  range,
+}: {
+  right: React.ReactNode;
+  range?: TimeRange;
+}) {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-base/70 py-4 backdrop-blur-md">
       <Container className="flex items-center justify-between gap-4">
@@ -90,18 +104,7 @@ function DashboardHeader({ right }: { right: React.ReactNode }) {
           <Wordmark />
         </Link>
         <div className="flex items-center gap-3">
-          <div className="hidden items-center rounded-full border border-border bg-surface/60 p-0.5 sm:flex">
-            {TIME_RANGES.map((r, i) => (
-              <span
-                key={r}
-                className={`rounded-full px-3 py-1 text-xs ${
-                  i === 1 ? "bg-surface-2 text-foreground" : "text-subtle"
-                }`}
-              >
-                {r}
-              </span>
-            ))}
-          </div>
+          {range ? <TimeRangeToggle active={range} /> : null}
           {right}
         </div>
       </Container>
@@ -114,10 +117,14 @@ function DashboardHeader({ right }: { right: React.ReactNode }) {
 function ConnectedDashboard({
   profile,
   data,
+  range,
 }: {
   profile: SpotifyUserProfile;
   data: DashboardData;
+  range: TimeRange;
 }) {
+  const rangeLabel = timeRangeLongLabel(range);
+
   // Insight layer — all pure, no additional fetches.
   const erasSection: Section<DecadeBucket[]> = data.topTracks.ok
     ? { ok: true, data: decadeBreakdown(data.topTracks.data) }
@@ -221,7 +228,10 @@ function ConnectedDashboard({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <DashboardHeader right={<ProfileCard profile={profile} />} />
+      <DashboardHeader
+        right={<ProfileCard profile={profile} />}
+        range={range}
+      />
 
       <main className="flex-1 py-8">
         <Container className="space-y-6">
@@ -230,7 +240,7 @@ function ConnectedDashboard({
               Welcome{profile.display_name ? `, ${profile.display_name}` : ""}
             </h1>
             <p className="mt-1 text-sm text-muted">
-              Your listening at a glance · last 6 months
+              Your listening at a glance · {rangeLabel.toLowerCase()}
             </p>
           </div>
 
@@ -266,7 +276,7 @@ function ConnectedDashboard({
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <SectionCard
               title="Top artists"
-              subtitle="Last 6 months"
+              subtitle={rangeLabel}
               section={data.topArtists}
               isEmpty={(a) => a.length === 0}
               emptyMessage="No top artists yet — keep listening."
@@ -288,7 +298,7 @@ function ConnectedDashboard({
 
             <SectionCard
               title="Top tracks"
-              subtitle="Last 6 months"
+              subtitle={rangeLabel}
               section={data.topTracks}
               isEmpty={(t) => t.length === 0}
               emptyMessage="No top tracks yet."

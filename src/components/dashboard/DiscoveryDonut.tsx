@@ -71,7 +71,7 @@ export function DiscoveryDonut({ data }: { data: DiscoveryResult }) {
         </ul>
         <p className="mt-3 text-xs text-muted">{data.caption}</p>
         <p className="mt-1 text-[11px] text-subtle">
-          Approximate · your last {data.total} plays vs. your 6-month favorites.
+          Approximate · your last {data.total} plays vs. your top favorites.
         </p>
       </div>
     </div>
