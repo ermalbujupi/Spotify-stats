@@ -12,6 +12,8 @@ import { TrackList } from "@/components/dashboard/TrackList";
 import { RecentlyPlayedList } from "@/components/dashboard/RecentlyPlayedList";
 import { DecadeBars } from "@/components/dashboard/DecadeBars";
 import { LibrarySummary } from "@/components/dashboard/LibrarySummary";
+import { TimeOfDayBars } from "@/components/dashboard/TimeOfDayBars";
+import { RepeatsList } from "@/components/dashboard/RepeatsList";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { getSession, isExpired } from "@/lib/auth/session";
 import { fetchProfile } from "@/lib/spotify/profile";
@@ -23,12 +25,20 @@ import {
 } from "@/lib/spotify/dashboard-data";
 import { decadeBreakdown, type DecadeBucket } from "@/lib/insights/eras";
 import { summarizeLibrary, type LibrarySummary as LibrarySummaryData } from "@/lib/insights/library";
+import {
+  timeOfDayBreakdown,
+  repeatedTracks,
+  activeDays,
+  peakPeriod,
+  type PeriodBucket,
+  type RepeatedTrack,
+} from "@/lib/insights/patterns";
 import type { SpotifyUserProfile } from "@/lib/spotify/types";
 
 /**
- * Dashboard (Phase 4).
- * Polished, genre-free panel set: top artists grid, top tracks, recently
- * played timeline, an eras/decades chart, and a library/playlist summary.
+ * Dashboard (Phase 5).
+ * Extends Phase 4 with listening-pattern insights derived from recently-played:
+ * time-of-day distribution, tracks on repeat, and active-day counts.
  */
 
 const TIME_RANGES = ["4 weeks", "6 months", "12 months"] as const;
@@ -99,7 +109,7 @@ function ConnectedDashboard({
   profile: SpotifyUserProfile;
   data: DashboardData;
 }) {
-  // Derive secondary sections from the fetched data (insight layer).
+  // Insight layer — all pure, no additional fetches.
   const erasSection: Section<DecadeBucket[]> = data.topTracks.ok
     ? { ok: true, data: decadeBreakdown(data.topTracks.data) }
     : data.topTracks;
@@ -121,11 +131,26 @@ function ConnectedDashboard({
             : (data.savedTracks as { error: string }).error,
         };
 
+  // Phase 5 pattern insights from recently-played.
+  const recentPlays = sectionData(data.recentlyPlayed) ?? [];
+  const timeOfDaySection: Section<PeriodBucket[]> =
+    data.recentlyPlayed.ok
+      ? { ok: true, data: timeOfDayBreakdown(recentPlays) }
+      : data.recentlyPlayed;
+  const repeatsSection: Section<RepeatedTrack[]> =
+    data.recentlyPlayed.ok
+      ? { ok: true, data: repeatedTracks(recentPlays) }
+      : data.recentlyPlayed;
+
   // Headline stats (defensive — any section may have failed).
   const topArtist = sectionData(data.topArtists)?.[0]?.name ?? "—";
   const likedSongs = sectionData(data.savedTracks)?.total ?? null;
   const playlistCount = sectionData(data.playlists)?.length ?? null;
   const decadesSpanned = sectionData(erasSection)?.length ?? null;
+  const daysActive = recentPlays.length > 0 ? activeDays(recentPlays) : null;
+  const peakTime = timeOfDaySection.ok
+    ? (peakPeriod(timeOfDaySection.data) ?? null)
+    : null;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -143,7 +168,7 @@ function ConnectedDashboard({
           </div>
 
           {/* Headline stats */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             <StatTile value={topArtist} label="Top artist" />
             <StatTile
               value={likedSongs !== null ? likedSongs.toLocaleString() : "—"}
@@ -156,6 +181,14 @@ function ConnectedDashboard({
             <StatTile
               value={decadesSpanned !== null ? String(decadesSpanned) : "—"}
               label="Decades spanned"
+            />
+            <StatTile
+              value={daysActive !== null ? String(daysActive) : "—"}
+              label="Active days (recent)"
+            />
+            <StatTile
+              value={peakTime ?? "—"}
+              label="Peak listening time"
             />
           </div>
 
@@ -203,6 +236,28 @@ function ConnectedDashboard({
               className="lg:col-span-1"
             >
               {(buckets) => <DecadeBars buckets={buckets} />}
+            </SectionCard>
+
+            <SectionCard
+              title="When you listen"
+              subtitle="From your last 50 plays"
+              section={timeOfDaySection}
+              isEmpty={(b) => b.length === 0}
+              emptyMessage="Not enough recent plays to analyse."
+              className="lg:col-span-1"
+            >
+              {(buckets) => <TimeOfDayBars buckets={buckets} />}
+            </SectionCard>
+
+            <SectionCard
+              title="On repeat"
+              subtitle="Tracks you played more than once recently"
+              section={repeatsSection}
+              isEmpty={(t) => t.length === 0}
+              emptyMessage="No tracks repeated in your last 50 plays."
+              className="lg:col-span-2"
+            >
+              {(tracks) => <RepeatsList tracks={tracks} />}
             </SectionCard>
 
             <SectionCard
