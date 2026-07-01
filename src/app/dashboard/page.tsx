@@ -42,6 +42,7 @@ import { ScoreMeter } from "@/components/dashboard/ScoreMeter";
 import { DiscoveryDonut } from "@/components/dashboard/DiscoveryDonut";
 import { VibeRadar } from "@/components/dashboard/VibeRadar";
 import { PersonalityCard } from "@/components/dashboard/PersonalityCard";
+import { PrivacyNote } from "@/components/dashboard/PrivacyNote";
 import { TimeRangeToggle } from "@/components/dashboard/TimeRangeToggle";
 import { parseTimeRange, timeRangeLongLabel } from "@/lib/timeRange";
 import type { SpotifyUserProfile, TimeRange } from "@/lib/spotify/types";
@@ -99,14 +100,17 @@ function DashboardHeader({
 }) {
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-base/70 py-4 backdrop-blur-md">
-      <Container className="flex items-center justify-between gap-4">
-        <Link href="/">
+      <Container className="flex flex-wrap items-center gap-3">
+        <Link href="/" className="mr-auto">
           <Wordmark />
         </Link>
-        <div className="flex items-center gap-3">
-          {range ? <TimeRangeToggle active={range} /> : null}
-          {right}
-        </div>
+        {/* On mobile the toggle drops to its own full-width row. */}
+        {range ? (
+          <div className="order-last w-full sm:order-none sm:w-auto">
+            <TimeRangeToggle active={range} />
+          </div>
+        ) : null}
+        {right}
       </Container>
     </header>
   );
@@ -270,7 +274,9 @@ function ConnectedDashboard({
           </div>
 
           {/* Music personality */}
-          <PersonalityCard data={personality} />
+          <div className="animate-fade-up">
+            <PersonalityCard data={personality} />
+          </div>
 
           {/* Main grid */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -313,6 +319,7 @@ function ConnectedDashboard({
               section={erasSection}
               isEmpty={(b) => b.length === 0}
               emptyMessage="Not enough release-date data."
+              info="Groups your top tracks by the decade their album was released. Based on your top 50 tracks for the selected range."
               className="lg:col-span-1"
             >
               {(buckets) => <DecadeBars buckets={buckets} />}
@@ -324,6 +331,7 @@ function ConnectedDashboard({
               section={hourlySection}
               isEmpty={(h) => h.every((x) => x.count === 0)}
               emptyMessage="Not enough recent plays to analyse."
+              info="Hour-of-day distribution of your most recent ~50 plays, in your local time. A recent snapshot, not long-term behaviour."
               className="lg:col-span-1"
             >
               {(hours) => <ListeningClock hours={hours} />}
@@ -335,6 +343,7 @@ function ConnectedDashboard({
               section={repeatsSection}
               isEmpty={(t) => t.length === 0}
               emptyMessage="No tracks repeated in your last 50 plays."
+              info="Tracks that appear more than once within your last ~50 plays — Spotify only exposes that many."
               className="lg:col-span-2"
             >
               {(tracks) => <RepeatsList tracks={tracks} />}
@@ -344,6 +353,7 @@ function ConnectedDashboard({
               title="Your vibes"
               subtitle="Inferred from names, era & timing"
               section={vibesSection}
+              info="Approximate. Spotify no longer exposes audio mood or genres, so vibes are inferred from playlist & track names, release era, and listening time."
               className="lg:col-span-2"
             >
               {(v) => <VibeRadar data={v} />}
@@ -353,6 +363,7 @@ function ConnectedDashboard({
               title="Taste diversity"
               subtitle="Variety across your top tracks"
               section={diversitySection}
+              info="How many distinct artists appear across your top tracks. 100 = every track a different artist; lower = a few artists dominate."
               className="lg:col-span-1"
             >
               {(d) => (
@@ -370,6 +381,7 @@ function ConnectedDashboard({
               section={discoverySection}
               isEmpty={(d) => d.total === 0}
               emptyMessage="No recent plays to analyze."
+              info="Approximate. Of your last ~50 plays, how many are outside your top tracks/artists (discovery) vs. within them (comfort)."
               className="lg:col-span-3"
             >
               {(d) => <DiscoveryDonut data={d} />}
@@ -384,6 +396,8 @@ function ConnectedDashboard({
               {(summary) => <LibrarySummary data={summary} />}
             </SectionCard>
           </div>
+
+          <PrivacyNote />
         </Container>
       </main>
     </div>

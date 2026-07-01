@@ -1,17 +1,22 @@
 import { type ReactNode } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { InfoHint } from "@/components/ui/InfoHint";
 import type { Section } from "@/lib/spotify/dashboard-data";
 
 /**
  * A dashboard card bound to a data {@link Section}. Renders the children
  * (render-prop) on success, an empty state when the predicate matches, or a
  * compact inline error — so each panel degrades independently.
+ *
+ * Pass `info` to show a "?" tooltip in the header (e.g. to flag approximations);
+ * an explicit `action` takes precedence if both are given.
  */
 export function SectionCard<T>({
   title,
   subtitle,
   action,
+  info,
   section,
   isEmpty,
   emptyMessage = "Nothing to show yet.",
@@ -22,6 +27,7 @@ export function SectionCard<T>({
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  info?: string;
   section: Section<T>;
   isEmpty?: (data: T) => boolean;
   emptyMessage?: string;
@@ -30,8 +36,12 @@ export function SectionCard<T>({
   children: (data: T) => ReactNode;
 }) {
   return (
-    <Card className={className}>
-      <CardHeader title={title} subtitle={subtitle} action={action} />
+    <Card className={`transition-colors hover:border-border/70 ${className}`}>
+      <CardHeader
+        title={title}
+        subtitle={subtitle}
+        action={action ?? (info ? <InfoHint text={info} /> : undefined)}
+      />
       <CardBody className={bodyClassName}>
         {section.ok ? (
           isEmpty?.(section.data) ? (

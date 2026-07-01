@@ -41,3 +41,26 @@ body {
     radial-gradient(50rem 50rem at -10% 10%, rgba(99, 102, 241, 0.06), transparent 55%),
     var(--color-base);
 }
+
+/* Gentle entrance animation for dashboard content. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s ease both;
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none;
+  }
+}

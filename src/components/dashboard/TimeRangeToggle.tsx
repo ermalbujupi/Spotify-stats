@@ -9,7 +9,7 @@ import { TIME_RANGE_OPTIONS } from "@/lib/timeRange";
  */
 export function TimeRangeToggle({ active }: { active: TimeRange }) {
   return (
-    <div className="hidden items-center rounded-full border border-border bg-surface/60 p-0.5 sm:flex">
+    <div className="flex w-full items-center rounded-full border border-border bg-surface/60 p-0.5 sm:w-auto">
       {TIME_RANGE_OPTIONS.map((opt) => {
         const isActive = opt.value === active;
         return (
@@ -18,7 +18,7 @@ export function TimeRangeToggle({ active }: { active: TimeRange }) {
             href={`/dashboard?range=${opt.value}`}
             scroll={false}
             aria-current={isActive ? "true" : undefined}
-            className={`rounded-full px-3 py-1 text-xs transition-colors ${
+            className={`flex-1 rounded-full px-3 py-1 text-center text-xs transition-colors sm:flex-none ${
               isActive
                 ? "bg-surface-2 text-foreground"
                 : "text-subtle hover:text-foreground"
