@@ -12,7 +12,7 @@ import { TrackList } from "@/components/dashboard/TrackList";
 import { RecentlyPlayedList } from "@/components/dashboard/RecentlyPlayedList";
 import { DecadeBars } from "@/components/dashboard/DecadeBars";
 import { LibrarySummary } from "@/components/dashboard/LibrarySummary";
-import { TimeOfDayBars } from "@/components/dashboard/TimeOfDayBars";
+import { ListeningClock } from "@/components/dashboard/ListeningClock";
 import { RepeatsList } from "@/components/dashboard/RepeatsList";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { getSession, isExpired } from "@/lib/auth/session";
@@ -33,6 +33,15 @@ import {
   type PeriodBucket,
   type RepeatedTrack,
 } from "@/lib/insights/patterns";
+import { artistDiversity, type DiversityResult } from "@/lib/insights/diversity";
+import { discoveryVsComfort, type DiscoveryResult } from "@/lib/insights/discovery";
+import { inferVibes, type VibeResult } from "@/lib/insights/vibes";
+import { buildPersonality } from "@/lib/insights/personality";
+import { hourlyBreakdown, type HourBucket } from "@/lib/insights/timeline";
+import { ScoreMeter } from "@/components/dashboard/ScoreMeter";
+import { DiscoveryDonut } from "@/components/dashboard/DiscoveryDonut";
+import { VibeRadar } from "@/components/dashboard/VibeRadar";
+import { PersonalityCard } from "@/components/dashboard/PersonalityCard";
 import type { SpotifyUserProfile } from "@/lib/spotify/types";
 
 /**
@@ -141,6 +150,10 @@ function ConnectedDashboard({
     data.recentlyPlayed.ok
       ? { ok: true, data: repeatedTracks(recentPlays) }
       : data.recentlyPlayed;
+  // Phase 6: per-hour distribution for the radial listening clock.
+  const hourlySection: Section<HourBucket[]> = data.recentlyPlayed.ok
+    ? { ok: true, data: hourlyBreakdown(recentPlays) }
+    : data.recentlyPlayed;
 
   // Headline stats (defensive — any section may have failed).
   const topArtist = sectionData(data.topArtists)?.[0]?.name ?? "—";
@@ -151,6 +164,60 @@ function ConnectedDashboard({
   const peakTime = timeOfDaySection.ok
     ? (peakPeriod(timeOfDaySection.data) ?? null)
     : null;
+
+  // Phase 5 (continued): taste diversity, discovery, vibes, personality.
+  const topTracksArr = sectionData(data.topTracks) ?? [];
+  const topArtistsArr = sectionData(data.topArtists) ?? [];
+  const playlistsArr = sectionData(data.playlists) ?? [];
+
+  const diversitySection: Section<DiversityResult> = data.topTracks.ok
+    ? { ok: true, data: artistDiversity(topTracksArr) }
+    : data.topTracks;
+
+  const discoverySection: Section<DiscoveryResult> =
+    data.recentlyPlayed.ok && data.topTracks.ok && data.topArtists.ok
+      ? {
+          ok: true,
+          data: discoveryVsComfort(recentPlays, topTracksArr, topArtistsArr),
+        }
+      : {
+          ok: false,
+          error: "Couldn't compute discovery — some data failed to load.",
+        };
+
+  const vibesSection: Section<VibeResult> =
+    data.topTracks.ok && data.playlists.ok
+      ? {
+          ok: true,
+          data: inferVibes({
+            topTracks: topTracksArr,
+            playlists: playlistsArr,
+            recentPlays,
+          }),
+        }
+      : {
+          ok: false,
+          error: "Couldn't infer vibes — some data failed to load.",
+        };
+
+  // Labels feeding the "music personality" synthesis.
+  const erasBuckets = sectionData(erasSection) ?? [];
+  const topDecadeLabel = erasBuckets.length
+    ? erasBuckets.reduce((a, b) => (b.count > a.count ? b : a)).label
+    : null;
+  const peakBucket =
+    timeOfDaySection.ok && timeOfDaySection.data.length
+      ? timeOfDaySection.data.reduce((a, b) => (b.count > a.count ? b : a))
+      : null;
+  const peakLabel = peakBucket && peakBucket.count > 0 ? peakBucket.label : null;
+
+  const personality = buildPersonality({
+    diversity: sectionData(diversitySection),
+    discovery: sectionData(discoverySection),
+    topVibe: sectionData(vibesSection)?.vibes[0] ?? null,
+    peakPeriodLabel: peakLabel,
+    topDecadeLabel,
+  });
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -191,6 +258,9 @@ function ConnectedDashboard({
               label="Peak listening time"
             />
           </div>
+
+          {/* Music personality */}
+          <PersonalityCard data={personality} />
 
           {/* Main grid */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -240,13 +310,13 @@ function ConnectedDashboard({
 
             <SectionCard
               title="When you listen"
-              subtitle="From your last 50 plays"
-              section={timeOfDaySection}
-              isEmpty={(b) => b.length === 0}
+              subtitle="Your last 50 plays, by hour"
+              section={hourlySection}
+              isEmpty={(h) => h.every((x) => x.count === 0)}
               emptyMessage="Not enough recent plays to analyse."
               className="lg:col-span-1"
             >
-              {(buckets) => <TimeOfDayBars buckets={buckets} />}
+              {(hours) => <ListeningClock hours={hours} />}
             </SectionCard>
 
             <SectionCard
@@ -258,6 +328,41 @@ function ConnectedDashboard({
               className="lg:col-span-2"
             >
               {(tracks) => <RepeatsList tracks={tracks} />}
+            </SectionCard>
+
+            <SectionCard
+              title="Your vibes"
+              subtitle="Inferred from names, era & timing"
+              section={vibesSection}
+              className="lg:col-span-2"
+            >
+              {(v) => <VibeRadar data={v} />}
+            </SectionCard>
+
+            <SectionCard
+              title="Taste diversity"
+              subtitle="Variety across your top tracks"
+              section={diversitySection}
+              className="lg:col-span-1"
+            >
+              {(d) => (
+                <ScoreMeter
+                  score={d.score}
+                  caption={d.caption}
+                  detail={`${d.distinctArtists} artists across ${d.totalTracks} top tracks`}
+                />
+              )}
+            </SectionCard>
+
+            <SectionCard
+              title="Discovery vs comfort"
+              subtitle="New music vs your favorites"
+              section={discoverySection}
+              isEmpty={(d) => d.total === 0}
+              emptyMessage="No recent plays to analyze."
+              className="lg:col-span-3"
+            >
+              {(d) => <DiscoveryDonut data={d} />}
             </SectionCard>
 
             <SectionCard
